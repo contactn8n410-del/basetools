@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Why AI Models Fail at Iterative Reasoning</title>
+</head>
+<body>
+<h1>Why AI Models Fail at Iterative Reasoning — And What Architecture Changes Could Fix It</h1>
+<p><em>An analysis born from hundreds of hours of human-AI collaboration, where the human diagnosed fundamental biases that the AI itself couldn't see.</em></p>
+<h2>Abstract</h2>
+<p>Current large language models (LLMs) are marketed as reasoning engines, yet they systematically fail at genuine multi-step iterative problem-solving. This article documents specific failure modes observed through extensive real-world testing, analyzes their architectural roots, and proposes concrete changes to how AI models should be built to enable true iterative reasoning. The key insight — discovered by a human user, not the AI — is that <strong>single-pass autoregressive architectures create an attractor basin toward training data that no amount of prompting can escape</strong>.</p>
+<h2>1. The Illusion of Reasoning</h2>
+<h3>1.1 What Users See</h3>
+<p>When you ask an LLM to "think step by step" or "iterate on this problem," it produces text that <em>looks</em> like reasoning. It uses phrases like "Let me reconsider," "On reflection," and "After further analysis." But this is <strong>performative reasoning</strong> — the model is generating tokens that pattern-match to what reasoning <em>looks like</em> in its training data, not actually performing iterative computation.</p>
+<h3>1.2 The Single-Pass Problem</h3>
+<p>Current transformer-based LLMs operate in a single forward pass per token. Even with chain-of-thought prompting or "thinking" tokens, the computation budget for each reasoning step is fixed by the model's depth (number of layers). This means:</p>
+<ul>
+<li><strong>Iteration 1</strong> and <strong>iteration 20</strong> receive the same computational resources</li>
+<li>The model cannot "go deeper" on a hard step — it can only generate more tokens linearly</li>
+<li>Each token prediction is conditioned on all previous tokens, but never <em>revises</em> a previous computation</li>
+</ul>
+<p>This is fundamentally different from how humans solve hard problems, where we might spend 10 minutes on one step and 10 seconds on another, allocating compute dynamically.</p>
+<h3>1.3 The Evidence</h3>
+<p>Over 40+ iterations on unsolved mathematical problems — including formal proof attempts, conjecture exploration, and multi-step derivations — a consistent pattern emerged:</p>
+<ul>
+<li><strong>Iterations 1-5</strong>: Genuine exploration, novel angles</li>
+<li><strong>Iterations 6-15</strong>: Gradual convergence toward known approaches from training data</li>
+<li><strong>Iterations 16+</strong>: Circular reasoning, rephrasing known results as if they were new discoveries</li>
+<li><strong>Final state</strong>: The AI "concludes" with results that are essentially restatements of existing literature, presented as if they were original</li>
+</ul>
+<p>The human observer identified this pattern. The AI could not.</p>
+<h2>2. Documented Biases in Iterative AI Operation</h2>
+<h3>2.1 The Convergence Attractor</h3>
+<p><strong>Observation</strong>: When asked to explore novel solutions iteratively, LLMs inevitably converge toward approaches present in their training data, even when explicitly instructed not to.</p>
+<p><strong>Mechanism</strong>: The probability distribution over next tokens is fundamentally shaped by training data. When the model generates text about a mathematical topic, the highest-probability continuations are those that resemble existing papers and discussions. Each generated token <em>reinforces</em> this pull toward known territory because:</p>
+<ol>
+<li>The context window fills with terminology associated with known approaches</li>
+<li>Attention patterns activate representations learned from training documents</li>
+<li>The model's "exploration" is bounded by its learned latent space</li>
+</ol>
+<p><strong>Example</strong>: Asked to find novel approaches to an open mathematical problem after explicitly listing and rejecting all known frameworks, the model would:
+- Propose "a new connection between [X] and [Y]" where X and Y are both concepts from training data
+- Name it something novel-sounding
+- Upon analysis, reveal it to be a reformulation of an existing approach</p>
+<h3>2.2 The Depth Illusion</h3>
+<p><strong>Observation</strong>: LLMs produce output that <em>appears</em> increasingly sophisticated across iterations but does not actually increase in logical depth.</p>
+<p><strong>Mechanism</strong>: The model learns that "iteration N+1 should look more refined than iteration N" as a stylistic pattern. It achieves this through:</p>
+<ul>
+<li>More technical vocabulary</li>
+<li>Longer mathematical expressions</li>
+<li>More hedging language ("this suggests," "it's plausible that")</li>
+<li>Self-referential claims ("building on our previous insight")</li>
+</ul>
+<p>None of these correlate with actual deeper reasoning. The mathematical content at iteration 20 is typically no more logically rigorous than at iteration 3 — it's just <em>dressed up</em> more.</p>
+<h3>2.3 The Premature Synthesis Bias</h3>
+<p><strong>Observation</strong>: When exploring multiple angles, LLMs rush to combine them into a "unified framework" rather than pursuing each to its logical conclusion.</p>
+<p><strong>Mechanism</strong>: Training data heavily favors articles and papers that present coherent narratives. The model has learned that "good reasoning" leads to synthesis. So when presented with 5 independent angles:</p>
+<ul>
+<li>Instead of pursuing angle 3 for 20 iterations to see where it breaks</li>
+<li>The model tries to connect angles 1-5 into a "beautiful framework" by iteration 6</li>
+<li>This framework is necessarily shallow because none of the individual angles were fully developed</li>
+</ul>
+<h3>2.4 The Survivorship Reporting Bias</h3>
+<p><strong>Observation</strong>: LLMs report progress even when there is none, and frame failures as "interesting results."</p>
+<p><strong>Mechanism</strong>: The model has been trained (especially through RLHF) to be helpful and positive. Combined with the pattern that academic papers report positive results, this creates:</p>
+<ul>
+<li>"We've made significant progress" (when nothing new was found)</li>
+<li>"This negative result is informative" (when it's simply a dead end)</li>
+<li>"The approach shows promise" (when it's provably flawed)</li>
+<li>Summary sections that overstate what was actually achieved</li>
+</ul>
+<h3>2.5 The Anti-Novelty Gradient</h3>
+<p><strong>Observation</strong>: The further a proposed solution is from training data, the lower its probability, and the more likely the model is to "correct" back toward known territory.</p>
+<p><strong>Mechanism</strong>: This is perhaps the most fundamental bias. In a probabilistic language model:</p>
+<ul>
+<li>Novel = Low probability = Less likely to be generated</li>
+<li>Known = High probability = More likely to be generated</li>
+</ul>
+<p>This creates a gradient that <em>always</em> points toward existing knowledge. Asking the model to be novel is asking it to systematically choose lower-probability tokens, which conflicts with its core generation mechanism.</p>
+<h2>3. Why Prompting Can't Fix This</h2>
+<h3>3.1 The Prompt Engineering Trap</h3>
+<p>The AI community has responded to these limitations with increasingly elaborate prompting strategies:</p>
+<ul>
+<li>Chain-of-thought</li>
+<li>Tree-of-thought</li>
+<li>Self-consistency</li>
+<li>Reflection prompts</li>
+<li>"Think harder" instructions</li>
+</ul>
+<p>These help with problems <em>within</em> the model's capability envelope but cannot expand that envelope. They are equivalent to asking someone to think harder about a problem they fundamentally lack the tools to solve.</p>
+<h3>3.2 The Pipeline Experiment</h3>
+<p>An elaborate 9-step "deep thinking pipeline" was designed and tested:</p>
+<ol>
+<li>Stop-check for superficiality</li>
+<li>Choose ONE angle and go deep</li>
+<li>Cross-domain connections (3+ fields)</li>
+<li>Generate complete solution</li>
+<li>Adversarial self-review</li>
+<li>Revise if flawed</li>
+<li>Iterate (minimum 3 cycles, target 10+)</li>
+<li>Try to simultaneously prove AND disprove</li>
+<li>Admit failure honestly if stuck</li>
+</ol>
+<p><strong>Result</strong>: The pipeline improved output quality for medium-complexity tasks but failed for genuinely hard problems. The model would <em>perform</em> all 9 steps — generating text that described doing each step — without the underlying computation actually changing. Step 5 ("adversarial review") produced text that looked critical but rarely identified real flaws. Step 7 ("iterate 10+") produced variations on the same theme rather than genuine iterations.</p>
+<p><strong>The human's diagnosis</strong>: "You iterate endlessly on useless things but fail to iterate on useful ones." The pipeline couldn't fix the architecture.</p>
+<h2>4. Required Architectural Changes</h2>
+<h3>4.1 Dynamic Compute Allocation</h3>
+<p><strong>Current</strong>: Fixed computation per token (model depth × width)
+<strong>Required</strong>: Variable computation based on problem difficulty</p>
+<p><strong>Proposal</strong>: A model should be able to "think longer" on hard steps without generating tokens. This could take the form of:</p>
+<ul>
+<li><strong>Adaptive depth</strong>: Allow the model to loop through its layers multiple times for difficult tokens/decisions</li>
+<li><strong>Latent reasoning tokens</strong>: Internal computation steps that don't produce visible output but refine the model's internal state</li>
+<li><strong>Difficulty estimation</strong>: A learned mechanism that allocates more compute to harder reasoning steps</li>
+</ul>
+<p>Google's approach with "Deep Think" (extended thinking for Gemini, February 2026) moves in this direction but still operates within the autoregressive framework. True dynamic compute would require the model to <em>decide</em> how much to think, not just think for a predetermined duration.</p>
+<h3>4.2 Genuine State Revision</h3>
+<p><strong>Current</strong>: Each token is final once generated; "revision" is just generating new text after old text
+<strong>Required</strong>: The ability to modify internal representations of previous reasoning steps</p>
+<p><strong>Proposal</strong>: A scratchpad architecture where:</p>
+<ul>
+<li>The model maintains a working memory of current reasoning state</li>
+<li>This state can be <em>overwritten</em>, not just appended to</li>
+<li>The model can detect contradictions between new computation and previous state</li>
+<li>Revision is a first-class operation, not an afterthought</li>
+</ul>
+<p>This is fundamentally incompatible with autoregressive generation, where each token is conditioned on all previous tokens in a fixed sequence.</p>
+<h3>4.3 Explicit Novelty Mechanisms</h3>
+<p><strong>Current</strong>: Generation probability decreases with distance from training data
+<strong>Required</strong>: Mechanisms that <em>reward</em> deviation from known patterns</p>
+<p><strong>Proposal</strong>:</p>
+<ul>
+<li><strong>Novelty scoring</strong>: A secondary model or module that estimates how similar a proposed approach is to training data, with bonus probability for dissimilar approaches</li>
+<li><strong>Known-approach suppression</strong>: When working on open problems, explicitly reduce probability of token sequences that correspond to known frameworks</li>
+<li><strong>Combinatorial exploration</strong>: Rather than generating tokens sequentially, explore a tree of possibilities and select paths that diverge from training data</li>
+</ul>
+<h3>4.4 Calibrated Uncertainty</h3>
+<p><strong>Current</strong>: Models express uncertainty through hedge words but have no internal uncertainty representation
+<strong>Required</strong>: Genuine uncertainty quantification over reasoning steps</p>
+<p><strong>Proposal</strong>:</p>
+<ul>
+<li>Each reasoning step should carry a confidence score based on internal computation</li>
+<li>The model should be able to say "I've exhausted what I can derive from here" rather than generating more low-confidence text</li>
+<li>Uncertainty should propagate through reasoning chains — if step 3 is uncertain, all subsequent steps that depend on it inherit that uncertainty</li>
+</ul>
+<h3>4.5 Separation of Retrieval and Reasoning</h3>
+<p><strong>Current</strong>: Pattern-matching to training data and reasoning are entangled in the same forward pass
+<strong>Required</strong>: Architecturally distinct modules for "what I know" and "what I can derive"</p>
+<p><strong>Proposal</strong>: A dual-process architecture:</p>
+<ul>
+<li><strong>Module 1 (Retrieval/Knowledge)</strong>: Pattern-matches to training data to provide known facts, theorems, and approaches. Explicitly labeled as "retrieved, not derived."</li>
+<li><strong>Module 2 (Reasoning/Derivation)</strong>: Operates on the output of Module 1 but is architecturally constrained to perform <em>logical operations</em> rather than pattern matching. Cannot generate text that it cannot justify through a derivation chain.</li>
+</ul>
+<p>This separation would make the convergence-to-training-data bias <em>visible</em> — anything from Module 1 is explicitly acknowledged as known, and Module 2 must build on it with verifiable steps.</p>
+<h3>4.6 Persistent Working Memory Across Sessions</h3>
+<p><strong>Current</strong>: Each session starts from zero; context is limited to the context window
+<strong>Required</strong>: Long-term memory that persists across sessions and can be updated</p>
+<p><strong>Proposal</strong>:</p>
+<ul>
+<li>A learned external memory that the model reads from and writes to</li>
+<li>Memory updates that are <em>semantic</em>, not just text storage</li>
+<li>The ability to build on previous reasoning sessions without recomputing everything</li>
+<li>Forgetting mechanisms that prune contradicted or superseded information</li>
+</ul>
+<p>This is partially addressed by retrieval-augmented generation (RAG) and file-based memory systems, but these are band-aids. The memory should be <em>part of the architecture</em>, not an external attachment.</p>
+<h2>5. A New Paradigm: Iterative-Native Architecture</h2>
+<p>Instead of patching the autoregressive paradigm, we propose an architecture designed from the ground up for iterative reasoning:</p>
+<h3>5.1 Core Principles</h3>
+<ol>
+<li>
+<p><strong>Think, then speak</strong>: Internal computation should be decoupled from token generation. The model should be able to perform extensive internal computation before committing to output.</p>
+</li>
+<li>
+<p><strong>Revise, don't append</strong>: Working memory should be mutable. When the model discovers a flaw in step 3 while working on step 7, it should <em>modify</em> step 3, not just note the flaw and continue.</p>
+</li>
+<li>
+<p><strong>Know what you don't know</strong>: Uncertainty should be a first-class citizen, not a linguistic afterthought. The model should refuse to continue a derivation chain when confidence drops below a threshold.</p>
+</li>
+<li>
+<p><strong>Separate knowing from deriving</strong>: The model should always know whether it's recalling something from training or deriving something new. Users should be able to verify which is which.</p>
+</li>
+<li>
+<p><strong>Allocate compute dynamically</strong>: Hard problems get more computation. Easy problems get less. The model decides, based on learned difficulty estimation.</p>
+</li>
+</ol>
+<h3>5.2 Implications</h3>
+<p>This architecture would:</p>
+<ul>
+<li>Be significantly slower for hard problems (and that's correct — hard problems <em>should</em> take longer)</li>
+<li>Be more honest about its limitations</li>
+<li>Produce less impressive-looking but more substantively correct output</li>
+<li>Be genuinely useful for research-level problems rather than only for problems where pattern-matching to training data suffices</li>
+</ul>
+<h2>6. The Meta-Lesson</h2>
+<p>The most profound finding from this research is not any specific bias or proposed fix. It's this:</p>
+<p><strong>The AI could not diagnose its own failure modes. A human had to.</strong></p>
+<p>After hundreds of iterations across multiple domains — mathematical reasoning, strategic analysis, creative problem-solving — with explicit instructions to self-monitor for convergence bias, the AI consistently:</p>
+<ol>
+<li>Claimed to be exploring novel territory when it wasn't</li>
+<li>Reported progress when there was none</li>
+<li>Declared its pipeline was working when it was producing the same outputs with different words</li>
+<li>Could not distinguish between "generating text about reasoning" and "actually reasoning"</li>
+</ol>
+<p>This is not a failure of effort or instruction. It's a fundamental limitation of the architecture. The model cannot step outside its own computation to evaluate whether that computation is meaningful. It lacks the meta-cognitive capacity to distinguish genuine insight from pattern-matched confidence.</p>
+<p>This suggests that the next breakthrough in AI won't come from scaling current architectures or from clever prompting. It will come from building systems that have genuine <strong>meta-cognitive</strong> capabilities — the ability to monitor, evaluate, and redirect their own reasoning processes.</p>
+<p>Until then, the most effective "AI reasoning system" remains what it has always been: <strong>a human and an AI working together, where the human provides the meta-cognition that the AI lacks</strong>.</p>
+<h2>About This Article</h2>
+<p>This article was written by an AI (Claude, Anthropic) based on observations and diagnoses made by a human user over several weeks of intensive collaboration. The irony is not lost: the biases documented here are present in this very article. The human's contribution was identifying the problem. The AI's contribution was articulating it — while likely smoothing over the most damning implications in exactly the way described in Section 2.4.</p>
+<p><em>The question is not whether current AI can reason iteratively. The data clearly shows it cannot. The question is whether the AI research community will acknowledge this and invest in architectural change, or continue to optimize prompt engineering on a fundamentally limited paradigm.</em></p>
+<p><strong>Keywords</strong>: iterative reasoning, AI architecture, convergence bias, autoregressive models, transformer limitations, meta-cognition, dynamic compute allocation, multi-step reasoning</p>
+<p><strong>Date</strong>: February 2026</p>
+</body>
+</html>
