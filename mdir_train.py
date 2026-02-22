@@ -12,16 +12,22 @@ import math, time, json, os, shutil
 # Google Drive for persistent checkpoints
 # ============================================================
 DRIVE_DIR = '/content/drive/MyDrive/mdir_checkpoints'
-try:
-    from google.colab import drive
-    drive.mount('/content/drive', force_remount=False)
+if os.path.isdir('/content/drive/MyDrive'):
+    # Drive already mounted (e.g. from notebook cell)
     os.makedirs(DRIVE_DIR, exist_ok=True)
-    print(f'✅ Google Drive mounted — checkpoints → {DRIVE_DIR}')
+    print(f'✅ Google Drive already mounted — checkpoints → {DRIVE_DIR}')
     USE_DRIVE = True
-except Exception as e:
-    print(f'⚠️ Google Drive not available ({e}) — checkpoints local only')
-    DRIVE_DIR = '/content/checkpoints'
-    USE_DRIVE = False
+else:
+    try:
+        from google.colab import drive
+        drive.mount('/content/drive', force_remount=False)
+        os.makedirs(DRIVE_DIR, exist_ok=True)
+        print(f'✅ Google Drive mounted — checkpoints → {DRIVE_DIR}')
+        USE_DRIVE = True
+    except Exception as e:
+        print(f'⚠️ Google Drive not available ({e}) — checkpoints local only')
+        DRIVE_DIR = '/content/checkpoints'
+        USE_DRIVE = False
 
 # ============================================================
 # Device
