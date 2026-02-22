@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MDIR: What If a Single Model Could Debate Itself Before Answering?</title>
+<meta name="description" content="A new AI architecture for breaking LLM convergence from the inside — Multi-Depth Iterative Reasoning">
+<style>
+body { max-width: 780px; margin: 40px auto; padding: 0 20px; font-family: Georgia, serif; line-height: 1.7; color: #1a1a1a; background: #fafafa; }
+h1 { font-size: 2.2em; line-height: 1.2; margin-bottom: 0.2em; }
+h2 { font-size: 1.5em; margin-top: 2em; border-bottom: 1px solid #ddd; padding-bottom: 0.3em; }
+h3 { font-size: 1.2em; margin-top: 1.5em; }
+.subtitle { font-size: 1.1em; color: #555; font-style: italic; margin-bottom: 2em; }
+.date { color: #888; font-size: 0.9em; }
+blockquote { border-left: 3px solid #333; margin: 1.5em 0; padding: 0.5em 1.5em; background: #f0f0f0; }
+code { background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+pre { background: #2d2d2d; color: #f8f8f2; padding: 1.2em; border-radius: 6px; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; color: inherit; padding: 0; }
+strong { color: #000; }
+a { color: #0066cc; }
+hr { border: none; border-top: 1px solid #ddd; margin: 2.5em 0; }
+.diagram { background: #f5f5f5; border: 1px solid #ddd; padding: 1.5em; border-radius: 8px; margin: 1.5em 0; font-family: monospace; font-size: 0.9em; white-space: pre-wrap; }
+table { border-collapse: collapse; width: 100%; margin: 1.5em 0; }
+th, td { border: 1px solid #ddd; padding: 10px 14px; text-align: left; }
+th { background: #f0f0f0; font-weight: bold; }
+.footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #ddd; color: #888; font-size: 0.9em; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>MDIR: What If a Single Model Could Debate Itself Before Answering?</h1>
+<p class="subtitle">A New Architecture for Breaking LLM Convergence &mdash; From the Inside</p>
+<p class="date">February 2026</p>
+
+<hr>
+
+<p>On February 17, 2026, xAI released the public beta of Grok 4.20. Its headline feature: four specialized AI agents &mdash; a Captain, a Researcher, a Logician, and a Creative &mdash; that debate each other before producing a final answer. The result: hallucinations dropped from 12% to 4.2%.</p>
+
+<p>This is significant. But there's a deeper question that Grok's approach doesn't address: <strong>what if this deliberation happened inside a single model, not between separate ones?</strong></p>
+
+<p>That's the premise behind <strong>MDIR</strong> &mdash; Multi-Depth Iterative Reasoning &mdash; an architecture we've been designing that embeds multiple cognitive processors within a single transformer backbone, each operating at a different level of abstraction, with distinct functional roles, debating through a shared working memory before an assembler reasons about their disagreements.</p>
+
+<p>This isn't a paper. It's a design document &mdash; an honest account of what the architecture proposes, what's genuinely new, what's borrowed, and what we don't know how to build yet.</p>
+
+<hr>
+
+<h2>The Problem: One Voice, One Distribution</h2>
+
+<p>Every current LLM, no matter how large, produces output through a single pathway: token by token, each one the most probable continuation given the context. Even with chain-of-thought prompting or temperature sampling, the model operates within a single distribution learned from training data.</p>
+
+<p>This creates a fundamental limitation: <strong>the model cannot genuinely surprise itself</strong>. It can't produce a conclusion that emerges from the confrontation of opposing perspectives, because it has no opposing perspectives. It has one voice.</p>
+
+<p>The "multi-agent debate" approach (used by Grok 4.20, and explored academically by Du et al. 2023) solves this by running multiple separate models and having them argue. But this is expensive, architecturally inelegant, and the debate happens at the text level &mdash; the models argue in natural language, not in representation space.</p>
+
+<p><strong>What if the debate happened inside the model, in latent space, between specialized processors that see the problem at fundamentally different levels of abstraction?</strong></p>
+
+<hr>
+
+<h2>The MDIR Architecture</h2>
+
+<h3>Backbone with Taps</h3>
+
+<p>MDIR starts with a standard transformer backbone. Nothing new here. But instead of only using the final layer's output, we <strong>tap</strong> the hidden states at multiple depths:</p>
+
+<ul>
+<li><strong>Layer 2</strong>: Surface features &mdash; syntax, local patterns</li>
+<li><strong>Layer 4</strong>: Semantic features &mdash; literal meaning</li>
+<li><strong>Layer 6</strong>: Abstract relations &mdash; implications, inferences</li>
+<li><strong>Layer 8</strong>: High-level representations &mdash; the "big picture"</li>
+</ul>
+
+<p>Each tap feeds a different <strong>Reasoning Head</strong> (RH). The key insight: a question looks fundamentally different at layer 2 versus layer 8. The surface-level representation might see "2 + 2" as a pattern to complete. The deep representation understands arithmetic.</p>
+
+<p>This isn't feature pyramids (borrowed from computer vision) applied to language. It's the recognition that <strong>depth in a transformer corresponds to abstraction level</strong>, and reasoning benefits from confronting multiple abstraction levels simultaneously.</p>
+
+<h3>Reasoning Heads: Not Experts &mdash; Cognitive Modes</h3>
+
+<p>This is where MDIR diverges from everything that exists.</p>
+
+<p>In a Mixture of Experts (MoE) like Mixtral or Grok itself, experts are structurally identical networks that develop implicit specializations through training. You can't look at an expert and say "this one does math" &mdash; the specialization is statistical, not architectural.</p>
+
+<p>MDIR's Reasoning Heads have <strong>structurally different processing modes</strong> based on their assigned role:</p>
+
+<p><strong>The Lead</strong> operates like a standard transformer head &mdash; concentrated attention, high-confidence predictions, the "obvious answer." This is the baseline. It's what the model would say without deliberation.</p>
+
+<p><strong>The Critic</strong> has what we call <em>inverted attention</em>. Instead of attending to the most salient tokens, it's biased toward regions where other RHs show <strong>low confidence</strong>. It receives a confidence map from the other heads and computes an "error map" &mdash; actively searching for weaknesses, contradictions, and unjustified assumptions. This isn't learned specialization. It's an architectural mechanism that forces the Critic to look where others don't.</p>
+
+<p><strong>The Explorer</strong> implements <em>distribution inversion</em>. It takes the backbone's probability distribution and pushes probability mass toward tokens the backbone considers unlikely &mdash; not randomly (that's just high temperature), but through a learned repulsive projection that maintains coherence while forcing exploration of the space the training data doesn't cover. The mechanism: project the Explorer's hidden state into the subspace orthogonal to the backbone's representation.</p>
+
+<p><strong>The Verifier</strong> performs <em>bidirectional causal verification</em>. Standard transformers are unidirectional &mdash; they predict forward. The Verifier checks both directions: does the conclusion follow from the premises, AND do the premises necessarily lead to this conclusion? This is a structural mechanism for logical consistency checking, not a learned behavior.</p>
+
+<p><strong>The crucial point</strong>: these aren't labels. The Critic doesn't just learn to produce "critical-sounding" text. Its attention mechanism is architecturally wired to focus on weaknesses. The Explorer doesn't just sample at high temperature. Its representation is projected away from the backbone's confident predictions.</p>
+
+<h3>Dynamic Role Assignment</h3>
+
+<p>Here's where it gets interesting. The roles aren't fixed.</p>
+
+<p>A <strong>Router</strong> &mdash; itself a small network that observes the state of deliberation &mdash; assigns roles to RHs at each iteration. After round 1, if the Critic found major flaws, the Router might convert the Explorer into a second Critic to deepen the analysis. If there's consensus, it might stop early.</p>
+
+<p>The Router decides:</p>
+<ol>
+<li>Which role each RH plays this iteration</li>
+<li>The priority/weight of each RH</li>
+<li>Whether to continue deliberating or stop</li>
+</ol>
+
+<p>This isn't MoE routing (which routes tokens to fixed experts once). This is <strong>strategic reassignment of cognitive modes across iterations</strong>, informed by the evolving state of the debate.</p>
+
+<h3>Working Memory: A Structured Debate Space</h3>
+
+<p>The Working Memory is not a vector buffer with weighted averaging.</p>
+
+<p>Each RH writes a <strong>structured entry</strong> after each iteration:</p>
+
+<pre><code>{
+    conclusion: the hidden state output
+    confidence: how certain this RH is
+    attention_map: WHAT the RH focused on (shared transparently)
+    disagreements: with WHOM it disagrees and on WHAT
+}</code></pre>
+
+<p>When a RH reads from memory, it reads <strong>selectively based on its role</strong>:</p>
+<ul>
+<li>The Critic searches for entries with high confidence (targets to challenge)</li>
+<li>The Explorer searches for entries with high agreement (consensus to break)</li>
+<li>The Verifier searches for chains of reasoning to validate</li>
+</ul>
+
+<p>The attention maps are shared. This means each RH can see not just what others concluded, but <strong>why</strong> &mdash; which parts of the input they attended to. This makes the debate happen in representation space, not in token space.</p>
+
+<h3>The Assembler: A Judge, Not an Averager</h3>
+
+<p>After deliberation ends, the Assembler produces the final output. But it doesn't average or vote.</p>
+
+<p>It performs <strong>explicit disagreement resolution</strong>:</p>
+
+<ol>
+<li><strong>Consensus zones</strong>: Where all RHs agree &rarr; accept directly</li>
+<li><strong>Disagreement zones</strong>: Where RHs diverge &rarr; the Assembler must reason about WHY</li>
+</ol>
+
+<p>For each disagreement:</p>
+<ul>
+<li>Did the Critic find a valid flaw in the Lead's position?</li>
+<li>Did the Explorer find a more coherent alternative?</li>
+<li>Did the Verifier validate or invalidate specific reasoning chains?</li>
+</ul>
+
+<p>The Assembler can <strong>reject the majority</strong> if a minority position has stronger supporting evidence (as measured by verification scores and reasoning chain coherence).</p>
+
+<p>It emits a meta-confidence signal:</p>
+<ul>
+<li><strong>High</strong>: Strong consensus + verification passed</li>
+<li><strong>Medium</strong>: Disagreement resolved with residual uncertainty</li>
+<li><strong>Low</strong>: Unresolved disagreement, answer is best-effort</li>
+</ul>
+
+<p>This is fundamentally different from any existing ensemble mechanism. MoE gating, model averaging, majority voting &mdash; none of these reason about disagreements. They treat disagreement as noise to be smoothed. MDIR treats it as <strong>information to be analyzed</strong>.</p>
+
+<hr>
+
+<h2>What's Genuinely New</h2>
+
+<p>Let's be honest about what's borrowed and what isn't.</p>
+
+<p><strong>Borrowed</strong>: Transformer backbone, tapping hidden states at different depths, Gumbel-Softmax for discrete routing, external memory concepts, iterative refinement.</p>
+
+<p><strong>New</strong>:</p>
+
+<ol>
+<li><strong>Functional cognitive roles</strong> &mdash; Not implicit specialization through training (MoE), but architectural mechanisms that change how attention and processing work based on role assignment. The Critic's inverted attention, the Explorer's repulsive projection, the Verifier's bidirectional checking.</li>
+<li><strong>Multi-depth deliberation with role reassignment</strong> &mdash; Existing iterative models (diffusion, ALBERT) re-process the same representation. MoE assigns once. MDIR deliberates across iterations with changing roles informed by the evolving debate state.</li>
+<li><strong>Reasoned assembly over disagreements</strong> &mdash; Every existing ensemble method aggregates. MDIR's Assembler is designed to reason about WHY components disagree, not just weight their outputs.</li>
+<li><strong>Debate-oriented working memory</strong> &mdash; Existing external memories store vectors. MDIR's WM stores structured entries with reasons (attention maps) and explicit disagreements, read selectively by role.</li>
+<li><strong>Architectural anti-convergence</strong> &mdash; Existing diversity methods (temperature, top-k, JS-divergence loss) perturb the surface. MDIR's diversity emerges structurally from the Explorer's repulsive projection and the Critic's inverted attention.</li>
+</ol>
+
+<hr>
+
+<h2>The Grok 4.20 Parallel</h2>
+
+<p>The timing is striking. Grok 4.20, released the same week we formalized MDIR, uses four named agents (Captain, Harper, Benjamin, Lucas) that debate and peer-review before the Captain synthesizes.</p>
+
+<p>The philosophical alignment is clear:</p>
+<ul>
+<li>Both architectures use specialized cognitive roles</li>
+<li>Both implement deliberative debate before final output</li>
+<li>Both have a coordinator/assembler that synthesizes</li>
+</ul>
+
+<p>The key difference: <strong>Grok does this between separate model instances. MDIR proposes to do it inside a single model.</strong></p>
+
+<p>These are two fundamentally different approaches to the same intuition:</p>
+
+<ul>
+<li><strong>Grok 4.20</strong> uses independent agents that communicate in text/token space. Each agent is a full model. The coordination happens externally. This is proven, practical, and already deployed.</li>
+<li><strong>MDIR</strong> proposes that the deliberation happens in latent representation space, within a shared backbone. The RHs are lightweight and share parameters. The debate is differentiable and trainable end-to-end.</li>
+</ul>
+
+<p>Neither approach is inherently superior. Grok's multi-agent system is simpler to build, easier to scale, and each agent can be updated independently. MDIR's intra-model approach is unproven &mdash; it could potentially offer efficiency gains and richer debate through shared representations, but it faces hard implementation challenges that haven't been solved yet.</p>
+
+<p>The fact that two independent efforts converged on "specialized roles + deliberation + synthesis" suggests this direction is worth exploring. Whether the intra-model variant works as well as the multi-agent variant is an open empirical question.</p>
+
+<hr>
+
+<h2>What We Don't Know How to Build (Yet)</h2>
+
+<p>Honesty section. These are the unsolved problems:</p>
+
+<h3>1. Will Inverted Attention Produce Garbage?</h3>
+<p>The Critic's mechanism focuses on low-confidence regions. But low-confidence regions might be low-confidence for good reasons (ambiguous input, irrelevant tokens). Forcing attention there could produce noise rather than useful criticism.</p>
+<p><strong>Best lead</strong>: Guide attention using confidence maps from other RHs, not raw inversion. Focus on regions where confidence is low AND disagreement is high.</p>
+
+<h3>2. Can the Explorer Maintain Coherence?</h3>
+<p>Projecting into the orthogonal subspace of the backbone's representation forces exploration &mdash; but the orthogonal subspace might not contain coherent language. The Explorer could become a random token generator.</p>
+<p><strong>Best lead</strong>: Learned repulsive projection with a coherence constraint. The Explorer diverges from the backbone but is still penalized for incoherence.</p>
+
+<h3>3. Is Reasoned Assembly Learnable?</h3>
+<p>Reasoning about disagreements between vector representations is hard. The Assembler might collapse into weighted averaging during training because that's the easier minimum.</p>
+<p><strong>Best lead</strong>: Curriculum training with synthetic "minority is correct" examples. Train the Assembler to sometimes follow the minority when it has better evidence, using constructed cases where the majority is wrong.</p>
+
+<h3>4. Will Roles Collapse During Training?</h3>
+<p>End-to-end cross-entropy loss might push all RHs toward the same optimum, making roles cosmetic.</p>
+<p><strong>Best lead</strong>: Phase-based curriculum. Train the Lead first (standard language modeling). Then freeze the Lead and train the Critic adversarially (rewarded for finding Lead's errors). Then add the Explorer. Then the Verifier. Then train them together.</p>
+
+<h3>5. How to Evaluate?</h3>
+<p>Standard benchmarks (MMLU, HumanEval) measure single-answer accuracy. They don't measure whether the model considered alternatives, identified its own mistakes, or reasoned about disagreements.</p>
+<p><strong>Open question</strong>: We need metrics for reasoning diversity, self-correction, and deliberation quality.</p>
+
+<hr>
+
+<h2>Where This Goes</h2>
+
+<p>MDIR is a design, not a product. We've built a v1 prototype that implements the skeleton (backbone + taps + RHs + router + assembler + training loop) but with standard components at every level &mdash; the "soul" of the architecture (functional roles, structured debate, reasoned assembly) remains to be implemented.</p>
+
+<p>The path forward is iterative:</p>
+<ol>
+<li>Solve role training (curriculum approach)</li>
+<li>Implement and test the Critic's inverted attention</li>
+<li>Implement and test the Explorer's repulsive projection</li>
+<li>Build the structured working memory</li>
+<li>Design and train the reasoning assembler</li>
+</ol>
+
+<p>Each step is independently testable. Each step adds a measurable capability. And each step brings us closer to answering the core question: <strong>can a single model genuinely debate itself into better answers?</strong></p>
+
+<p>If the answer is yes &mdash; even partially &mdash; it would represent a fundamental shift in how we think about LLM architecture. Not bigger models, not more data, not longer chains of thought. But richer internal deliberation.</p>
+
+<p>The architecture that thinks before it speaks.</p>
+
+<div class="footer">
+<p>MDIR is an independent research architecture, currently at the design stage. We welcome discussion and collaboration.</p>
+</div>
+
+</body>
+</html>
