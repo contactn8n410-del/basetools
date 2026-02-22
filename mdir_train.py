@@ -6,7 +6,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from dataclasses import dataclass
-import math, time, json, os
+import math, time, json, os, shutil
+
+# ============================================================
+# Google Drive for persistent checkpoints
+# ============================================================
+DRIVE_DIR = '/content/drive/MyDrive/mdir_checkpoints'
+try:
+    from google.colab import drive
+    drive.mount('/content/drive', force_remount=False)
+    os.makedirs(DRIVE_DIR, exist_ok=True)
+    print(f'✅ Google Drive mounted — checkpoints → {DRIVE_DIR}')
+    USE_DRIVE = True
+except Exception as e:
+    print(f'⚠️ Google Drive not available ({e}) — checkpoints local only')
+    DRIVE_DIR = '/content/checkpoints'
+    USE_DRIVE = False
 
 # ============================================================
 # Device
@@ -417,8 +432,30 @@ save_every = 500
 history = []
 global_step = 0
 os.makedirs('checkpoints', exist_ok=True)
+os.makedirs(DRIVE_DIR, exist_ok=True)
+
+# === Resume from checkpoint if available ===
+resume_path = os.path.join(DRIVE_DIR, 'mdir_latest.pt')
+start_epoch = 1
+if os.path.exists(resume_path):
+    print(f'🔄 Resuming from {resume_path}...')
+    ckpt = torch.load(resume_path, map_location=device, weights_only=False)
+    model.load_state_dict(ckpt['model'])
+    optimizer.load_state_dict(ckpt['optimizer'])
+    global_step = ckpt['step']
+    history = ckpt.get('history', [])
+    start_epoch = ckpt.get('epoch', 1)
+    # Advance scheduler to correct position
+    for _ in range(global_step):
+        scheduler.step()
+    print(f'  ✅ Resumed at step {global_step}, epoch {start_epoch}, loss {history[-1]["loss"]:.4f}')
+else:
+    print('🆕 No checkpoint found — training from scratch')
 
 for phase in phase_config:
+    if phase['epoch'] < start_epoch:
+        print(f"⏭️ Skipping {phase['desc']} (already done)")
+        continue
     epoch = phase['epoch']
     n_iters = phase['n_iters']
     model.config.diversity_lambda = phase['div_lambda']
@@ -431,7 +468,14 @@ for phase in phase_config:
     epoch_steps = 0
     t0 = time.time()
 
+    # Calculate how many batches to skip if resuming mid-epoch
+    skip_batches = global_step - (phase['epoch'] - 1) * len(train_loader) if phase['epoch'] == start_epoch and global_step > 0 else 0
+    if skip_batches > 0:
+        print(f'  ⏭️ Skipping {skip_batches} batches (already trained)')
+
     for batch_idx, batch in enumerate(train_loader):
+        if batch_idx < skip_batches:
+            continue
         input_ids = batch['input_ids'].to(device)
         labels = batch['labels'].to(device)
 
@@ -466,9 +510,17 @@ for phase in phase_config:
                   f"{steps_per_sec:.1f} steps/s | lr {lr:.2e}", flush=True)
 
         if global_step % save_every == 0:
-            torch.save({'step': global_step, 'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'config': config, 'history': history},
-                       f'checkpoints/mdir_step{global_step}.pt')
-            print(f'  💾 Saved checkpoint at step {global_step}')
+            ckpt_data = {'step': global_step, 'epoch': epoch, 'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'config': config, 'history': history}
+            local_path = f'checkpoints/mdir_step{global_step}.pt'
+            torch.save(ckpt_data, local_path)
+            # Copy to Drive for persistence
+            drive_path = os.path.join(DRIVE_DIR, 'mdir_latest.pt')
+            try:
+                shutil.copy2(local_path, drive_path)
+                shutil.copy2(local_path, os.path.join(DRIVE_DIR, f'mdir_step{global_step}.pt'))
+                print(f'  💾 Saved checkpoint at step {global_step} → Drive ✅')
+            except Exception as e:
+                print(f'  💾 Saved checkpoint at step {global_step} (Drive failed: {e})')
 
     # Validation
     model.eval()
@@ -486,8 +538,14 @@ for phase in phase_config:
     print(f"\n  Epoch {epoch} done | Train loss: {train_avg:.4f} | Val loss: {val_avg:.4f}")
 
 # Save final
-torch.save({'step': global_step, 'model': model.state_dict(), 'config': config, 'history': history}, 'checkpoints/mdir_final.pt')
-print('\n🎉 Training complete! Final checkpoint saved.')
+final_data = {'step': global_step, 'epoch': 3, 'model': model.state_dict(), 'config': config, 'history': history}
+torch.save(final_data, 'checkpoints/mdir_final.pt')
+try:
+    shutil.copy2('checkpoints/mdir_final.pt', os.path.join(DRIVE_DIR, 'mdir_final.pt'))
+    shutil.copy2('checkpoints/mdir_final.pt', os.path.join(DRIVE_DIR, 'mdir_latest.pt'))
+    print('\n🎉 Training complete! Final checkpoint saved to Drive ✅')
+except:
+    print('\n🎉 Training complete! Final checkpoint saved locally.')
 
 # ============================================================
 # Evaluation
